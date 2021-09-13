@@ -1,0 +1,206 @@
+---
+title: "Analysis of reviews of Entertainment apps on Google play store"
+author: "Qing Zhang, Suraj Kumar, Xin Zhang, Xinyue Shu, Yao Xiao"
+output:
+  pdf_document:
+    latex_engine: xelatex
+    number_sections: yes
+  html_document:
+    df_print: paged
+fig_caption: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE, comment = NA)
+```
+
+```{r libraries}
+library(tidyverse)
+library(moderndive)
+library(skimr)
+library(kableExtra)
+library(gridExtra)
+library(GGally)
+library(infer)
+library(broom)
+library(ggfortify)
+```
+
+```{r data,echo=FALSE,eval=TRUE}
+GoogleplayEntertainment<-read_csv("/home/suraj/Desktop/stats_folder/GooglePlayEntertainment0621.csv")
+
+```
+# Introduction {#sec:Intro}
+Experiments were conducted as the part of research into Entertainment App from Google play. 111 Restricted and Unrestricted Entertainment Apps were used in the experiment and they each had their Ratings and Reviews. Association between reviews and ratings and the interactive effect due to restrictions are analyzed in the report.
+So the purpose of our report is to explore how app ratings affect app reviews.
+
+This report focuses on a different analysis level through summaries, boxplots, and linear relations. Section \ref{sec:EDA}  describes the exploratory analysis of link among all variables under consideration using a table of summaries,box plots, and scatter plot.  Section \ref{sec:FDA} consists of linear model regression fitting and analysis of the result. Section  \ref{sec:Conc} states the conclusion based on the overall analysis. 
+
+Note:The reviews are in millions, but the ratings are within 10, so their scales are completely different.So we did log transformation of reviews to reduce them down to an order similar to ratings.
+
+
+# Exploratory Data Analysis {#sec:EDA}
+```{r eval=TRUE,echo=FALSE}
+GoogleplayEntertainment.rating<-GoogleplayEntertainment %>%
+  dplyr::select(Rating,Reviews,Content.Rating)
+```
+Summary statistics of the rating of the entertainment app are presented in the following table for each Content rating separately.This table shows that there were approximately twice as many Restricted app in the sample (74 compared to 37).First, the mean rating of the restricted app was 4.12 compared to 4.16 for the unrestricted app.Secondly, we see that the middle 50% of restricted app is 4.2 between Q1 3.9 and Q3 4.3.We also note that the middle 50% of unrestricted app is 4.3 between Q1 4.0 and Q3 4.5.Thirdly,we can also see that the variability in the restricted app,as measured by the standard deviation of 0.26,the standard deviation of 0.43 for the unrestricted app.
+```{r eval=TRUE}
+GoogleplayEntertainment.rating%>%
+  group_by(Content.Rating)%>%
+  summarise(Count=n(),Mean=mean(Rating),St.Dev=sd(Rating),Min=min(Rating),Q1=quantile(Rating,0.25),Median=median(Rating),Q3=quantile(Rating,0.75),Max=max(Rating))%>%
+  kable(caption='\\label{tab:summaries} Summary statistics on Rating by Content Rating of 111 observations.')%>%
+  kable_styling(latex_options="hold_position")
+
+```
+Summary statistics of the reviews of the environment app are presented in the following table for each Content rating separately.This table shows that there were approximately twice as many Restricted app in the sample (74 compared to 37).First, the mean rating of the restricted app was 11.09 compared to 10.51 for the unrestricted app.Secondly, we see that the middle 50% of restricted app is 10.86 between Q1 10 and Q3 12.6.We also note that the middle 50% of unrestricted app is 10.4 between Q1 9.1 and Q3 12.11.Thirdly, we can also see that the variability in the restricted app,as measured by the standard deviation of 2.09, the standard deviation of 2.21 for the unrestricted app.
+```{r eval=TRUE}
+GoogleplayEntertainment.rating%>%
+  group_by(Content.Rating)%>%
+  summarise(Count=n(),Mean=round(mean(log(Reviews)),digit=2),St.Dev=round(sd(log(Reviews)),digit=2),Min=round(min(log(Reviews)),digit=2),Q1=round(quantile(log(Reviews),0.25),digit=2),Median=round(median(log(Reviews)),digit=2),Q3=round(quantile(log(Reviews),0.75),digit=2),Max=round(max(log(Reviews)),digit=2))%>%
+  kable(caption='\\label{tab:summaries} Summary statistics on log(Reviews) by Content Rating of 111 observations.')%>%
+  kable_styling(latex_options="hold_position")
+
+```
+  
+  
+  
+Let's compute the correlation coefficient between our outcome variable Reviews and our continuous explanatory variables Rating
+```{r eval=TRUE}
+GoogleplayEntertainment.rating%>%
+  get_correlation(formula=log(Reviews)~Rating)
+```
+We can see that the correlation between log(Reviews) and Rating is 0.1873251.There is only a weakly positive relationship between log(Reviews) and Rating.
+
+We do here the box plot analysis
+```{r boxplot, out.width = '58%', fig.align = "center", fig.cap = "\\label{fig:box} Rating by Content ratings", fig.pos = 'H'}
+ggplot(GoogleplayEntertainment.rating, aes(x =Content.Rating , y = log(Reviews))) +
+geom_boxplot() +
+labs(x = "Content.rating", y = "log(Reviews)",
+title = "Reviews of 111 google play store apps restriction wise")
+```
+The boxplot shows that the restricted app having much reviews,in general,compared to the unrestricted app and that the reviews of the unrestricted were more widely distributed.There are also potentially one outlier which have unusually reviews.
+
+We can now visualize our data by producing a scatterplot, where seeing as we have the categorical variable Content.Rating, we shall plot the points using different colors for each Content.Rating:
+There are very few restricted apps having less rating than 3.5 in our data set.
+There appears to be a positive relationship between log(Reviews) and Rating. Hence, log(Reviews) tends to increase with Rating. 
+From the plotted regression lines, we can see that the lines have different slopes for restricted and unrestricted. That is, the associated effect of increasing rating appears to be more severe for restricted app than it does for unrestricted app, i.e. the reviews of restricted app raise faster with rating.
+```{r, eval = TRUE, out.width = '80%', fig.align = "center", fig.cap = "\\label{fig:scat} Relationship between Rating and Reviews. The best-fitting line has been superimposed.", fig.pos = "H"}
+ggplot(GoogleplayEntertainment.rating, aes(y = log(Reviews), x = Rating,color=Content.Rating)) +
+  geom_jitter() +
+  labs(x = "Ratings", y = "log(Reviews)",color="Content.Rating") +
+  geom_smooth(method = "lm", se = FALSE)
+```
+
+
+
+
+
+# Formal Data Analysis {#sec:FDA}
+We would like to start analysis by considering a full model. The full model considers the interaction between rating(continuous) and content.rating(categorical). The model can be expressed as:-
+
+$$\widehat{\mbox{log(Reviews)}} = \widehat{\alpha} +\widehat{\beta}_{\mbox{Rating}}+\widehat{\beta}_{\mbox{Content}} \cdot \mathbb{I}_{\mbox{Content}}(x) +\widehat{\beta}_{\mbox{Rating * Content.rating}} $$
+where:\
+* $\widehat{\mbox{log(Reviews)}}$ is the log transformation of reviews as a response variable; \
+* $\widehat{\beta}_{\mbox{Rating}}$ is the cofficient for Rating varibale; \
+* $\widehat{\alpha}$ is the intercept term; \
+* $\widehat{\beta}_{\mbox{Rating * Content.rating}}$ is the interaction term coefficient; \
+* $\widehat{\beta}_{\mbox{Content}}$ is the coefficient for Content.rating; and\
+* $\mathbb{I}_{\mbox{Content}}(x)$ is an indicator function such that\
+
+
+$$\mathbb{I}_{\mbox{Content}}(x)=\left\{\begin{array}{ll}
+1 ~~~ \mbox{if an entertainment app is unrestricted} \\
+0 ~~~ \mbox{Otherwise}.\\
+\end{array}
+\right.$$
+
+
+
+
+```{r full_model}
+model1 <- lm(log(Reviews) ~ Rating*Content.Rating,data = GoogleplayEntertainment.rating)
+get_regression_table(model1) %>%
+kable(caption = '\\label{tab:ful} Estimates of the parameters from the fitted linear
+full model.') %>%
+kable_styling(latex_options = 'HOLD_position')
+
+```
+
+From the table \ref{tab:ful}, we noticed that the coefficient $\widehat{\beta}_{\mbox{Rating}}$ is positive. The value of  $\widehat{\beta}_{\mbox{Rating * Content.rating}}$ is less than 0,that means for a given rating, restricted apps will have more reviews. However, the confidence interval (-3.135,1.836) contains 0, therefore, the interaction term is insignificant. Likewise, $\widehat{\beta}_{\mbox{Content}}$, which has confidence interval (-8.270, 12.376) contains 0, hence is insignificant too. We need to remove the two insignificant variables one by one.  Let's fit a parallel model that ignores interaction term. 
+
+$$\widehat{\mbox{log(Reviews)}} = \widehat{\alpha} +\widehat{\beta}_{\mbox{Rating}}+\widehat{\beta}_{\mbox{Content}} \cdot \mathbb{I}_{\mbox{Content}}(x) $$
+
+```{r model_parallel}
+model2 <-  lm(log(Reviews) ~ Rating+Content.Rating,data = GoogleplayEntertainment.rating)
+get_regression_table(model2) %>%
+kable(caption = '\\label{tab:par} Estimates of the parameters from the fitted linear
+parallel model.') %>%
+kable_styling(latex_options = 'HOLD_position')
+
+```
+
+From the Table \ref{tab:par}, $\widehat{\beta}_{\mbox{Content}}$ has still a confidence interval(-1.465,0.194) which contains 0. Therefore, the factor term is insignificant. We work to further reduce the model to simple that only considers rating variable. lets analyse a simple model:- 
+$$\widehat{\mbox{log(Reviews)}} = \widehat{\alpha} +\widehat{\beta}_{\mbox{Rating}} $$
+
+```{r model_simple}
+model3 <-  lm(log(Reviews) ~ Rating,data = GoogleplayEntertainment.rating)
+get_regression_table(model3) %>%
+kable(caption = '\\label{tab:sim} Estimates of the parameters from the fitted linear
+simple model.') %>%
+kable_styling(latex_options = 'HOLD_position')
+```
+
+```{r plot, out.width = '68%', fig.align = "center", fig.cap = "\\label{fig:box} Simple linear fitting", fig.pos = 'H'}
+ggplot(GoogleplayEntertainment.rating,mapping =  aes(x = Rating, y = log(Reviews))) +
+  geom_point() +
+  labs(y = "log(Reviews)", x = "Rating")+
+  geom_line(aes(y = model3$fitted.values,x= Rating,color = 1))
+
+```
+Finally,  we came to a model which has all parameters significant. The value of $\widehat{\beta}_{\mbox{Rating}}$ is 1.51 and likely to lie in range between 0.281 and 2.740. The confidence interval doesn't contain 0. Log(reviews) shows a positive association with rating. For 1 unit increases in rating, log(reviews) would increase by 1.51 times. This is the right time to check if all standard assumptions hold for our final model. 
+
+
+```{r assumptions}
+model3 %>%
+autoplot(which = c(1:4))
+
+```
+we plot residuals vs fitted value and normal Q-Q plot to verify the standard assumptions of linear regression. In our case, there is no pattern observed in residual plot and normal Q-Q plot perfectly fits the diagonal line. Therefore, the residuals have mean 0, constant variance, and normal distribution. Moreover, we don't identify any outlier as no point has crossed the cook's distance line in residual vs leverage plot. Furthermore, we would like to check the variable selection method to consolidate our analysis. 
+```{r model_fitting}
+library(infer)
+m1 <- glance(model1)
+m2 <- glance(model2)
+m3 <- glance(model3)
+Models <- c('Interactive','Parallel','Simple') 
+bind_rows(m1, m2, 
+          m3, .id = "Model") %>%
+  select(Model, adj.r.squared, AIC, BIC) %>%
+  mutate(Model = Models) %>%  
+  kable(
+    digits = 2,
+    caption = "Model comparison values for different models.", 
+  ) %>%
+kable_styling(latex_options = "hold_position")
+
+```
+
+We noticed that the model3 has the lowest Bic value 490.55. The model3 has almost same Aic value of model2, but model3 has advantage of having less explanatory variable. Therefore, on the basis of selection criteria, we choose model3. We find our result coherent with the previous model analysis. 
+
+# Conclusions {#sec:Conc}
+From our analysis, we can conclude that greater the rating, more would be the reviews. Reviews, however, don't depend upon the restrictions at all. Reviews will increase by a factor of 4.481689 for each unit increase in Rating and the increment is likely to be in the interval (1.32, 15.48). For an entertainment app ,having rating close to 3,has estimated review around (`r round(exp(4.45+3*1.5))`). The conclusion supports our initial impression.
+
+# Extention {#sec:Ext}
+We will consider more category of apps. We may include age-wise restrictions in the categorical variable. We may also include origin of the app country-wise as a part of analysis. Therefore, we can analyse how reviews are affected by country , age-restrictions, and genre. 
+
+
+
+
+
+
+
+
+
+
+
+
